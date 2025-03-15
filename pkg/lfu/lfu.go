@@ -1,13 +1,9 @@
 package lfu
 
-<<<<<<< HEAD
 import (
 	"fmt"
 	"sync"
 )
-=======
-import "fmt"
->>>>>>> be3d639a2676cfa5889c5cca9ee531195f30b06b
 
 type Set[T comparable] struct {
 	items map[T]struct{}
@@ -19,10 +15,7 @@ type Cache[KeyT comparable, ValueT any] struct {
 	freq     map[KeyT]int
 	keys     map[int]*Set[KeyT]
 	minFreq  int
-<<<<<<< HEAD
 	mutex    sync.Mutex
-=======
->>>>>>> be3d639a2676cfa5889c5cca9ee531195f30b06b
 }
 
 func NewSet[T comparable]() *Set[T] {
@@ -70,12 +63,9 @@ func (s *Set[T]) String() string {
 }
 
 func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (any, bool) {
-<<<<<<< HEAD
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
-=======
->>>>>>> be3d639a2676cfa5889c5cca9ee531195f30b06b
 	if _, ok := cache.values[key]; !ok {
 		return nil, false
 	}
@@ -86,12 +76,9 @@ func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (any, bool) {
 }
 
 func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
-<<<<<<< HEAD
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
-=======
->>>>>>> be3d639a2676cfa5889c5cca9ee531195f30b06b
 	if _, ok := cache.freq[key]; ok {
 		freq := cache.freq[key]
 		cache.update(key, value, freq)
