@@ -1,117 +1,62 @@
 package main
 
-import "fmt"
-
-const SIZE = 5
-
-type Node struct {
-	Left  *Node
-	Right *Node
-	Val   string
-}
-
-type Queue struct {
-	Head   *Node
-	Tail   *Node
-	Length int
-}
-
-type Hash map[string]*Node
-
-type Cache struct {
-	Queue Queue
-	Hash  Hash
-}
-
-func NewQueue() Queue {
-	head := &Node{}
-	tail := &Node{}
-
-	head.Right = tail
-	tail.Left = head
-
-	return Queue{Head: head, Tail: tail}
-}
-
-func NewCache() Cache {
-	return Cache{
-		Queue: NewQueue(),
-		Hash:  Hash{},
-	}
-}
-
-func (c *Cache) Check(str string) {
-	node := &Node{}
-
-	if val, ok := c.Hash[str]; ok {
-		node = c.Remove(val)
-	} else {
-		node = &Node{Val: str}
-	}
-
-	c.Add(node)
-
-	c.Hash[str] = node
-}
-
-func (c *Cache) Remove(n *Node) *Node {
-	fmt.Printf("remove: %s\n", n.Val)
-
-	left := n.Left
-	right := n.Right
-
-	left.Right = right
-	right.Left = left
-
-	c.Queue.Length--
-	delete(c.Hash, n.Val)
-
-	return n
-}
-
-func (c *Cache) Add(n *Node) {
-	fmt.Printf("add: %s\n", n.Val)
-
-	tmp := c.Queue.Head.Right
-	c.Queue.Head.Right = n
-
-	n.Left = c.Queue.Head
-	n.Right = tmp
-	tmp.Left = n
-
-	c.Queue.Length++
-	if c.Queue.Length > SIZE {
-		c.Remove(c.Queue.Tail.Left)
-	}
-}
-
-func (q *Queue) Display() {
-	node := q.Head.Right
-
-	fmt.Printf("%d - [", q.Length)
-
-	for i := 0; i < q.Length; i++ {
-		fmt.Printf("{%s}", node.Val)
-
-		if i < q.Length-1 {
-			fmt.Printf("<-->")
-		}
-		node = node.Right
-	}
-
-	fmt.Println("]")
-}
-
-func (c *Cache) Display() {
-	c.Queue.Display()
-}
+import (
+	"cache-sev/pkg/lfu"
+	"fmt"
+)
 
 func main() {
-	fmt.Println("Start Cache")
-	cache := NewCache()
-
-	for _, word := range []string{"parrot", "avocado", "dragonfruit", "tree", "potato", "tomato", "tree", "dog"} {
-		cache.Check(word)
-		cache.Display()
+	Assert := func(ok bool) {
+		if !ok {
+			panic("Assertion is failed")
+		}
 	}
+
+	lfu := lfu.NewCache[int, string](3)
+
+	lfu.Put(1, "A")
+	lfu.Put(2, "B")
+
+	got, ok := lfu.Get(1)
+	Assert(ok && got == "A")
+
+	lfu.Put(3, "C")
+
+	got, ok = lfu.Get(2)
+	Assert(ok && got == "B")
+
+	lfu.Put(4, "D")
+
+	got, ok = lfu.Get(3)
+	Assert(!ok)
+
+	got, ok = lfu.Get(1)
+	Assert(ok && got == "A")
+
+	got, ok = lfu.Get(2)
+	Assert(ok && got == "B")
+
+	got, ok = lfu.Get(4)
+	Assert(ok && got == "D")
+
+	fmt.Println(lfu)
+	fmt.Println("OK")
 }
+
+// func main() {
+// 	cache := NewLRUCache[string, string](2)
+
+// 	cache.Put("Response1", "Content1")
+// 	cache.Put("Response2", "Content2")  // Response1, Response2
+// 	fmt.Println(cache.Get("Response1")) // Content1
+
+// 	cache.Put("Response3", "Content3")  // Response3, Response1
+// 	fmt.Println(cache.Get("Response2")) // nil
+
+// 	cache.Put("Response4", "Content4") // Response4, Response3
+
+// 	fmt.Println(cache.Get("Response1")) // nil
+// 	fmt.Println(cache.Get("Response2")) // nil
+// 	fmt.Println(cache.Get("Response3")) // Content3
+// 	fmt.Println(cache.Get("Response4")) // Content4
+// }
