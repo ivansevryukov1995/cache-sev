@@ -16,8 +16,8 @@ type Cache[KeyT comparable, ValueT any] struct {
 	freq          map[KeyT]int
 	keys          map[int]*Set[KeyT]
 	minFreq       int
-	ttl           time.Duration      // Время жизни для элементов
-	expiry        map[KeyT]time.Time // Время истечения для элементов
+	ttl           time.Duration
+	expiry        map[KeyT]time.Time
 	mutex         sync.RWMutex
 	cleanupTicker *time.Ticker
 	stopCleanup   chan struct{}
@@ -42,7 +42,7 @@ func NewCache[KeyT comparable, ValueT any](capacity int, ttl time.Duration, clea
 		cleanupTicker: time.NewTicker(cleanupInterval),
 	}
 
-	go cache.cleanupExpired() // Запуск фоновой очистки устаревших элементов
+	go cache.cleanupExpired()
 
 	return cache
 }
@@ -83,7 +83,7 @@ func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 		return *new(ValueT), false
 	}
 
-	if time.Now().After(cache.expiry[key]) { // Проверка на истечение времени
+	if time.Now().After(cache.expiry[key]) {
 		cache.evictKey(key)
 		return *new(ValueT), false
 	}
@@ -107,7 +107,7 @@ func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 		}
 		cache.values[key] = value
 		cache.freq[key] = 1
-		cache.expiry[key] = time.Now().Add(cache.ttl) // Установка времени истечения
+		cache.expiry[key] = time.Now().Add(cache.ttl)
 		if _, ok := cache.keys[1]; !ok {
 			cache.keys[1] = NewSet[KeyT]()
 		}
@@ -126,7 +126,7 @@ func (cache *Cache[KeyT, ValueT]) update(key KeyT, value ValueT, freq int) {
 	}
 
 	cache.values[key] = value
-	cache.expiry[key] = time.Now().Add(cache.ttl) // Обновление времени истечения
+	cache.expiry[key] = time.Now().Add(cache.ttl)
 	cache.freq[key] = freq + 1
 	if _, ok := cache.keys[freq+1]; !ok {
 		cache.keys[freq+1] = NewSet[KeyT]()
@@ -141,10 +141,9 @@ func (cache *Cache[KeyT, ValueT]) evict() {
 	}
 	delete(cache.values, key)
 	delete(cache.freq, key)
-	delete(cache.expiry, key) // Удаление из expiry
+	delete(cache.expiry, key)
 }
 
-// cleanupExpired проверяет и удаляет устаревшие элементы из кэша
 func (cache *Cache[KeyT, ValueT]) cleanupExpired() {
 	for {
 		select {
@@ -162,7 +161,6 @@ func (cache *Cache[KeyT, ValueT]) cleanupExpired() {
 	}
 }
 
-// EvictKey удаляет указанный ключ из кэша
 func (cache *Cache[KeyT, ValueT]) evictKey(key KeyT) {
 	if _, ok := cache.values[key]; ok {
 		freq := cache.freq[key]
@@ -177,12 +175,11 @@ func (cache *Cache[KeyT, ValueT]) evictKey(key KeyT) {
 
 		delete(cache.values, key)
 		delete(cache.freq, key)
-		delete(cache.expiry, key) // Удаляем ключ из expiry
+		delete(cache.expiry, key)
 	}
 }
 
-// StopCleanup останавливает процесс очистки
 func (cache *Cache[KeyT, ValueT]) StopCleanup() {
-	close(cache.stopCleanup)   // Посылаем сигнал для остановки
-	cache.cleanupTicker.Stop() // Остановка тика
+	close(cache.stopCleanup)
+	cache.cleanupTicker.Stop()
 }
