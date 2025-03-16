@@ -1,12 +1,16 @@
 package lru
 
-import "sync"
+import (
+	"sync"
+	"time"
+)
 
 type Node[KeyT comparable, ValueT any] struct {
-	key   KeyT
-	value ValueT
-	prev  *Node[KeyT, ValueT]
-	next  *Node[KeyT, ValueT]
+	key    KeyT
+	value  ValueT
+	prev   *Node[KeyT, ValueT]
+	next   *Node[KeyT, ValueT]
+	expiry time.Time
 }
 
 type List[KeyT comparable, ValueT any] struct {
@@ -19,25 +23,27 @@ type Cache[KeyT comparable, ValueT any] struct {
 	cache    map[KeyT]*Node[KeyT, ValueT]
 	list     *List[KeyT, ValueT]
 	mutex    sync.Mutex
+	ttl      time.Duration
 }
 
 func NewList[KeyT comparable, ValueT any]() *List[KeyT, ValueT] {
 	var key KeyT
 	var value ValueT
 	list := &List[KeyT, ValueT]{
-		head: &Node[KeyT, ValueT]{key, value, nil, nil},
-		tail: &Node[KeyT, ValueT]{key, value, nil, nil},
+		head: &Node[KeyT, ValueT]{key, value, nil, nil, time.Time{}},
+		tail: &Node[KeyT, ValueT]{key, value, nil, nil, time.Time{}},
 	}
 	list.head.next = list.tail
 	list.tail.prev = list.head
 	return list
 }
 
-func NewCache[KeyT comparable, ValueT any](capacity int) *Cache[KeyT, ValueT] {
+func NewCache[KeyT comparable, ValueT any](capacity int, ttl time.Duration) *Cache[KeyT, ValueT] {
 	return &Cache[KeyT, ValueT]{
 		capacity: capacity,
 		cache:    make(map[KeyT]*Node[KeyT, ValueT]),
 		list:     NewList[KeyT, ValueT](),
+		ttl:      ttl,
 	}
 }
 
@@ -78,11 +84,23 @@ func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 	defer cache.mutex.Unlock()
 
 	if node, found := cache.cache[key]; found {
+		if time.Now().After(node.expiry) {
+			cache.Remove(key)
+			var value ValueT
+			return value, false
+		}
 		cache.list.MoveToFront(node)
 		return node.value, true
 	}
 	var value ValueT
 	return value, false
+}
+
+func (cache *Cache[KeyT, ValueT]) Remove(key KeyT) {
+	if node, found := cache.cache[key]; found {
+		cache.list.Remove(node)
+		delete(cache.cache, key)
+	}
 }
 
 func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
@@ -92,6 +110,7 @@ func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 	if node, found := cache.cache[key]; found {
 		cache.list.MoveToFront(node)
 		node.value = value
+		node.expiry = time.Now().Add(cache.ttl)
 		return
 	}
 	if len(cache.cache) == cache.capacity {
@@ -101,7 +120,7 @@ func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 			delete(cache.cache, back.key)
 		}
 	}
-	newNode := &Node[KeyT, ValueT]{key, value, nil, nil}
+	newNode := &Node[KeyT, ValueT]{key, value, nil, nil, time.Now().Add(cache.ttl)}
 	cache.list.PushToFront(newNode)
 	cache.cache[key] = newNode
 }

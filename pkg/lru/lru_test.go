@@ -3,6 +3,7 @@ package lru
 import (
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestCache(t *testing.T) {
@@ -59,8 +60,9 @@ func TestCache(t *testing.T) {
 func TestCacheRaceCondition(t *testing.T) {
 	const numItems = 50
 	const cacheCapacity = 100
+	const ttl = time.Millisecond * 100
 
-	cache := NewCache[int, string](cacheCapacity)
+	cache := NewCache[int, string](cacheCapacity, ttl)
 	var wg sync.WaitGroup
 
 	for i := 0; i < numItems; i++ {
