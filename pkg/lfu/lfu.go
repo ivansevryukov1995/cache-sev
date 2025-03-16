@@ -2,8 +2,9 @@ package lfu
 
 import (
 	"fmt"
-	"sync"
 	"time"
+
+	cache "github.com/ivansevryukov1995/cache-sev/pkg"
 )
 
 type Set[T comparable] struct {
@@ -11,40 +12,29 @@ type Set[T comparable] struct {
 }
 
 type Cache[KeyT comparable, ValueT any] struct {
-	capacity      int
-	values        map[KeyT]ValueT
-	freq          map[KeyT]int
-	keys          map[int]*Set[KeyT]
-	minFreq       int
-	ttl           time.Duration
-	expiry        map[KeyT]time.Time
-	mutex         sync.RWMutex
-	cleanupTicker *time.Ticker
-	stopCleanup   chan struct{}
+	base     *cache.BaseCache[KeyT, ValueT] // Использование базовой структуры
+	capacity int
+	values   map[KeyT]ValueT
+	freq     map[KeyT]int
+	keys     map[int]*Set[KeyT]
+	minFreq  int
+	expiry   map[KeyT]time.Time
 }
 
 func NewSet[T comparable]() *Set[T] {
-	return &Set[T]{
-		items: make(map[T]struct{}),
-	}
+	return &Set[T]{items: make(map[T]struct{})}
 }
 
 func NewCache[KeyT comparable, ValueT any](capacity int, ttl time.Duration, cleanupInterval time.Duration) *Cache[KeyT, ValueT] {
-	cache := &Cache[KeyT, ValueT]{
-		capacity:      capacity,
-		values:        make(map[KeyT]ValueT),
-		freq:          make(map[KeyT]int),
-		keys:          make(map[int]*Set[KeyT]),
-		minFreq:       0,
-		ttl:           ttl,
-		expiry:        make(map[KeyT]time.Time),
-		stopCleanup:   make(chan struct{}),
-		cleanupTicker: time.NewTicker(cleanupInterval),
+	base := cache.NewBaseCache[KeyT, ValueT](ttl, cleanupInterval)
+	return &Cache[KeyT, ValueT]{
+		base:     base,
+		capacity: capacity,
+		values:   make(map[KeyT]ValueT),
+		freq:     make(map[KeyT]int),
+		keys:     make(map[int]*Set[KeyT]),
+		expiry:   make(map[KeyT]time.Time),
 	}
-
-	go cache.cleanupExpired()
-
-	return cache
 }
 
 func (s *Set[T]) Add(val T) {
@@ -76,8 +66,8 @@ func (s *Set[T]) String() string {
 }
 
 func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
+	cache.base.Mutex.Lock()
+	defer cache.base.Mutex.Unlock()
 
 	if _, ok := cache.values[key]; !ok {
 		return *new(ValueT), false
@@ -95,8 +85,8 @@ func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 }
 
 func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
-	cache.mutex.Lock()
-	defer cache.mutex.Unlock()
+	cache.base.Mutex.Lock()
+	defer cache.base.Mutex.Unlock()
 
 	if _, ok := cache.freq[key]; ok {
 		freq := cache.freq[key]
@@ -107,7 +97,7 @@ func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 		}
 		cache.values[key] = value
 		cache.freq[key] = 1
-		cache.expiry[key] = time.Now().Add(cache.ttl)
+		cache.expiry[key] = time.Now().Add(cache.base.Ttl)
 		if _, ok := cache.keys[1]; !ok {
 			cache.keys[1] = NewSet[KeyT]()
 		}
@@ -126,7 +116,7 @@ func (cache *Cache[KeyT, ValueT]) update(key KeyT, value ValueT, freq int) {
 	}
 
 	cache.values[key] = value
-	cache.expiry[key] = time.Now().Add(cache.ttl)
+	cache.expiry[key] = time.Now().Add(cache.base.Ttl)
 	cache.freq[key] = freq + 1
 	if _, ok := cache.keys[freq+1]; !ok {
 		cache.keys[freq+1] = NewSet[KeyT]()
@@ -147,15 +137,15 @@ func (cache *Cache[KeyT, ValueT]) evict() {
 func (cache *Cache[KeyT, ValueT]) cleanupExpired() {
 	for {
 		select {
-		case <-cache.cleanupTicker.C:
-			cache.mutex.Lock()
+		case <-cache.base.CleanupTicker.C:
+			cache.base.Mutex.Lock()
 			for key, exp := range cache.expiry {
 				if time.Now().After(exp) {
 					cache.evictKey(key)
 				}
 			}
-			cache.mutex.Unlock()
-		case <-cache.stopCleanup:
+			cache.base.Mutex.Unlock()
+		case <-cache.base.StopCleanUp:
 			return
 		}
 	}
@@ -177,9 +167,4 @@ func (cache *Cache[KeyT, ValueT]) evictKey(key KeyT) {
 		delete(cache.freq, key)
 		delete(cache.expiry, key)
 	}
-}
-
-func (cache *Cache[KeyT, ValueT]) StopCleanup() {
-	close(cache.stopCleanup)
-	cache.cleanupTicker.Stop()
 }

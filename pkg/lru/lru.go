@@ -20,10 +20,10 @@ type List[KeyT comparable, ValueT any] struct {
 }
 
 type Cache[KeyT comparable, ValueT any] struct {
-	cache.BaseCache[KeyT, ValueT] // Использование базовой структуры
-	capacity                      int
-	cache                         map[KeyT]*Node[KeyT, ValueT]
-	list                          *List[KeyT, ValueT]
+	base     *cache.BaseCache[KeyT, ValueT] // Использование базовой структуры
+	capacity int
+	cache    map[KeyT]*Node[KeyT, ValueT]
+	list     *List[KeyT, ValueT]
 }
 
 func NewList[KeyT comparable, ValueT any]() *List[KeyT, ValueT] {
@@ -40,27 +40,10 @@ func NewCache[KeyT comparable, ValueT any](capacity int, ttl time.Duration, clea
 	base := cache.NewBaseCache[KeyT, ValueT](ttl, cleanupInterval)
 
 	return &Cache[KeyT, ValueT]{
-		BaseCache: *base,
-		capacity:  capacity,
-		cache:     make(map[KeyT]*Node[KeyT, ValueT]),
-		list:      NewList[KeyT, ValueT](),
-	}
-}
-
-func (cache *Cache[KeyT, ValueT]) cleanupExpired() {
-	for {
-		select {
-		case <-cache.CleanupTicker.C:
-			cache.Mutex.Lock()
-			for key, node := range cache.cache {
-				if time.Now().After(node.expiry) {
-					cache.Remove(key)
-				}
-			}
-			cache.Mutex.Unlock()
-		case <-cache.StopCleanUp:
-			return
-		}
+		base:     base,
+		capacity: capacity,
+		cache:    make(map[KeyT]*Node[KeyT, ValueT]),
+		list:     NewList[KeyT, ValueT](),
 	}
 }
 
@@ -97,8 +80,8 @@ func (l *List[KeyT, ValueT]) Back() *Node[KeyT, ValueT] {
 }
 
 func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
-	cache.Mutex.Lock()
-	defer cache.Mutex.Unlock()
+	cache.base.Mutex.Lock()
+	defer cache.base.Mutex.Unlock()
 
 	if node, found := cache.cache[key]; found {
 		if time.Now().After(node.expiry) {
@@ -114,8 +97,8 @@ func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 }
 
 func (cache *Cache[KeyT, ValueT]) Remove(key KeyT) {
-	cache.Mutex.Lock()
-	defer cache.Mutex.Unlock()
+	cache.base.Mutex.Lock()
+	defer cache.base.Mutex.Unlock()
 
 	if node, found := cache.cache[key]; found {
 		cache.list.Remove(node)
@@ -124,13 +107,13 @@ func (cache *Cache[KeyT, ValueT]) Remove(key KeyT) {
 }
 
 func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
-	cache.Mutex.Lock()
-	defer cache.Mutex.Unlock()
+	cache.base.Mutex.Lock()
+	defer cache.base.Mutex.Unlock()
 
 	if node, found := cache.cache[key]; found {
 		cache.list.MoveToFront(node)
 		node.value = value
-		node.expiry = time.Now().Add(cache.Ttl)
+		node.expiry = time.Now().Add(cache.base.Ttl)
 		return
 	}
 
@@ -142,12 +125,24 @@ func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 		}
 	}
 
-	newNode := &Node[KeyT, ValueT]{key, value, nil, nil, time.Now().Add(cache.Ttl)}
+	newNode := &Node[KeyT, ValueT]{key, value, nil, nil, time.Now().Add(cache.base.Ttl)}
 	cache.list.PushToFront(newNode)
 	cache.cache[key] = newNode
 }
 
-func (cache *Cache[KeyT, ValueT]) StopCleanup() {
-	close(cache.StopCleanUp)
-	cache.CleanupTicker.Stop()
+func (cache *Cache[KeyT, ValueT]) cleanupExpired() {
+	for {
+		select {
+		case <-cache.base.CleanupTicker.C:
+			cache.base.Mutex.Lock()
+			for key, node := range cache.cache {
+				if time.Now().After(node.expiry) {
+					cache.Remove(key)
+				}
+			}
+			cache.base.Mutex.Unlock()
+		case <-cache.base.StopCleanUp:
+			return
+		}
+	}
 }
