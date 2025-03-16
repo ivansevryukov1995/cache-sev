@@ -42,15 +42,13 @@ func NewList[KeyT comparable, ValueT any]() *List[KeyT, ValueT] {
 
 func NewCache[KeyT comparable, ValueT any](capacity int, ttl time.Duration, cleanupInterval time.Duration) *Cache[KeyT, ValueT] {
 	cache := &Cache[KeyT, ValueT]{
-		capacity:    capacity,
-		cache:       make(map[KeyT]*Node[KeyT, ValueT]),
-		list:        NewList[KeyT, ValueT](),
-		ttl:         ttl,
-		stopCleanup: make(chan struct{}), // Инициализация канала для остановки очистки
-
+		capacity:      capacity,
+		cache:         make(map[KeyT]*Node[KeyT, ValueT]),
+		list:          NewList[KeyT, ValueT](),
+		ttl:           ttl,
+		stopCleanup:   make(chan struct{}), // Инициализация канала для остановки очистки
+		cleanupTicker: time.NewTicker(cleanupInterval),
 	}
-
-	cache.cleanupTicker = time.NewTicker(cleanupInterval) // Создание тика на период очистки
 
 	go cache.cleanupExpired() // Запуск фонового процесса очистки
 
