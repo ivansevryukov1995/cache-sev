@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ivansevryukov1995/cache-sev/pkg"
 	"github.com/ivansevryukov1995/cache-sev/pkg/lru"
 )
 
@@ -18,15 +19,15 @@ var cache *lru.Cache[int, string]
 func init() {
 	const cacheCapacity = 100
 	const ttl = time.Second * 10
-	const cleanupInterval = time.Second * 5
 
-	// cache = lfu.NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
-	cache = lru.NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
+	// cache = lfu.NewCache[int, string](cacheCapacity, ttl)
+	cache = lru.NewCache[int, string](cacheCapacity, ttl)
+	cache.Logger = pkg.ConsoleLogger{}
 }
 
 func computeExpensiveOperation(key int) string {
 	// Simulation of an expensive operation
-	time.Sleep(time.Second * 2) // 200 мс
+	time.Sleep(time.Second * 5) // 200 мс
 	return fmt.Sprintf("Result for key %d is %d", key, rand.Intn(1000))
 }
 

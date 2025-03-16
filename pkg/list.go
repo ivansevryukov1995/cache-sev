@@ -24,8 +24,26 @@ func (l *List[KeyT, ValueT]) Remove(node *Node[KeyT, ValueT]) {
 	if node == nil {
 		return
 	}
-	node.Prev.Next = node.Next
-	node.Next.Prev = node.Prev
+
+	// Если элемент является головой списка
+	if node == l.Head {
+		l.Head = node.Next
+	}
+	// Если элемент является хвостом списка
+	if node == l.Tail {
+		l.Tail = node.Prev
+	}
+
+	if node.Prev != nil {
+		node.Prev.Next = node.Next
+	}
+	if node.Next != nil {
+		node.Next.Prev = node.Prev
+	}
+
+	// Обнуляем указатели узла, чтобы избежать утечек памяти
+	node.Prev = nil
+	node.Next = nil
 }
 
 func (l *List[KeyT, ValueT]) MoveToFront(node *Node[KeyT, ValueT]) {
