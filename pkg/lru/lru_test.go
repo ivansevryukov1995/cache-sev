@@ -7,8 +7,10 @@ import (
 )
 
 func TestCache(t *testing.T) {
+	const cacheCapacity = 2
+	const ttl = time.Millisecond * 100
 
-	cache := NewCache[int, string](2)
+	cache := NewCache[int, string](cacheCapacity, ttl)
 
 	// Проверка добавления и получения элемента
 	cache.Put(1, "one")
