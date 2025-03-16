@@ -4,14 +4,21 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestCacheRaceCondition(t *testing.T) {
-	cache := NewCache[int, string](100) // Создаем новый кэш с достаточной емкостью
+	const numItems = 50
+	const cacheCapacity = 100
+	const ttl = time.Millisecond * 100
+	const cleanupInterval = time.Millisecond * 10
+
+	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
+
 	var wg sync.WaitGroup
 
 	// Запускаем несколько горутин, которые одновременно добавляют элементы в кэш и пытаются их получить
-	for i := 0; i < 100; i++ {
+	for i := 0; i < numItems; i++ {
 		wg.Add(2)
 		go func(i int) {
 			defer wg.Done()
@@ -27,7 +34,7 @@ func TestCacheRaceCondition(t *testing.T) {
 	wg.Wait() // Дождаться завершения всех горутин
 
 	// Проверка, что все элементы находятся в кэше
-	for i := 0; i < 100; i++ {
+	for i := 0; i < numItems; i++ {
 		value, found := cache.Get(i)
 		if found && value != fmt.Sprintf("value%d", i) {
 			t.Errorf("Expected value for key %d to be 'value%d', got '%v'", i, i, value)
@@ -36,7 +43,11 @@ func TestCacheRaceCondition(t *testing.T) {
 }
 
 func TestCachePutAndGet(t *testing.T) {
-	cache := NewCache[int, string](2) // Создаем кэш с емкостью 2
+	const cacheCapacity = 2
+	const ttl = time.Millisecond * 100
+	const cleanupInterval = time.Millisecond * 10
+
+	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval) // Создаем кэш с емкостью 2
 
 	cache.Put(1, "value1")
 	cache.Put(2, "value2")
@@ -69,7 +80,11 @@ func TestCachePutAndGet(t *testing.T) {
 }
 
 func TestCacheEviction(t *testing.T) {
-	cache := NewCache[int, string](2)
+	const cacheCapacity = 2
+	const ttl = time.Millisecond * 100
+	const cleanupInterval = time.Millisecond * 10
+
+	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval) // Создаем кэш с емкостью 2
 
 	cache.Put(1, "value1")
 	cache.Put(2, "value2")

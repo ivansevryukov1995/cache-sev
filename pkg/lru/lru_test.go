@@ -9,8 +9,9 @@ import (
 func TestCache(t *testing.T) {
 	const cacheCapacity = 2
 	const ttl = time.Millisecond * 100
+	const cleanupInterval = time.Millisecond * 10
 
-	cache := NewCache[int, string](cacheCapacity, ttl)
+	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
 
 	// Проверка добавления и получения элемента
 	cache.Put(1, "one")
@@ -63,8 +64,10 @@ func TestCacheRaceCondition(t *testing.T) {
 	const numItems = 50
 	const cacheCapacity = 100
 	const ttl = time.Millisecond * 100
+	const cleanupInterval = time.Millisecond * 10
 
-	cache := NewCache[int, string](cacheCapacity, ttl)
+	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
+
 	var wg sync.WaitGroup
 
 	for i := 0; i < numItems; i++ {

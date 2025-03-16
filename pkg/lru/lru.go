@@ -19,11 +19,13 @@ type List[KeyT comparable, ValueT any] struct {
 }
 
 type Cache[KeyT comparable, ValueT any] struct {
-	capacity int
-	cache    map[KeyT]*Node[KeyT, ValueT]
-	list     *List[KeyT, ValueT]
-	mutex    sync.Mutex
-	ttl      time.Duration
+	capacity      int
+	cache         map[KeyT]*Node[KeyT, ValueT]
+	list          *List[KeyT, ValueT]
+	mutex         sync.RWMutex
+	ttl           time.Duration
+	cleanupTicker *time.Ticker  // Тикер для периодической очистки
+	stopCleanup   chan struct{} // Канал для остановки процесса очистки
 }
 
 func NewList[KeyT comparable, ValueT any]() *List[KeyT, ValueT] {
@@ -38,12 +40,38 @@ func NewList[KeyT comparable, ValueT any]() *List[KeyT, ValueT] {
 	return list
 }
 
-func NewCache[KeyT comparable, ValueT any](capacity int, ttl time.Duration) *Cache[KeyT, ValueT] {
-	return &Cache[KeyT, ValueT]{
-		capacity: capacity,
-		cache:    make(map[KeyT]*Node[KeyT, ValueT]),
-		list:     NewList[KeyT, ValueT](),
-		ttl:      ttl,
+func NewCache[KeyT comparable, ValueT any](capacity int, ttl time.Duration, cleanupInterval time.Duration) *Cache[KeyT, ValueT] {
+	cache := &Cache[KeyT, ValueT]{
+		capacity:    capacity,
+		cache:       make(map[KeyT]*Node[KeyT, ValueT]),
+		list:        NewList[KeyT, ValueT](),
+		ttl:         ttl,
+		stopCleanup: make(chan struct{}), // Инициализация канала для остановки очистки
+
+	}
+
+	cache.cleanupTicker = time.NewTicker(cleanupInterval) // Создание тика на период очистки
+
+	go cache.cleanupExpired() // Запуск фонового процесса очистки
+
+	return cache
+}
+
+// cleanupExpired проверяет и удаляет устаревшие элементы в кэше
+func (cache *Cache[KeyT, ValueT]) cleanupExpired() {
+	for {
+		select {
+		case <-cache.cleanupTicker.C:
+			cache.mutex.Lock()
+			for key, node := range cache.cache {
+				if time.Now().After(node.expiry) {
+					cache.Remove(key) // Удаление устаревшего элемента
+				}
+			}
+			cache.mutex.Unlock()
+		case <-cache.stopCleanup: // Получение сигнала для остановки
+			return
+		}
 	}
 }
 
@@ -97,6 +125,9 @@ func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 }
 
 func (cache *Cache[KeyT, ValueT]) Remove(key KeyT) {
+	cache.mutex.Lock()
+	defer cache.mutex.Unlock()
+
 	if node, found := cache.cache[key]; found {
 		cache.list.Remove(node)
 		delete(cache.cache, key)
@@ -113,6 +144,7 @@ func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 		node.expiry = time.Now().Add(cache.ttl)
 		return
 	}
+
 	if len(cache.cache) == cache.capacity {
 		back := cache.list.Back()
 		if back != nil {
@@ -120,7 +152,14 @@ func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 			delete(cache.cache, back.key)
 		}
 	}
+
 	newNode := &Node[KeyT, ValueT]{key, value, nil, nil, time.Now().Add(cache.ttl)}
 	cache.list.PushToFront(newNode)
 	cache.cache[key] = newNode
+}
+
+// StopCleanup останавливает процесс очистки
+func (cache *Cache[KeyT, ValueT]) StopCleanup() {
+	close(cache.stopCleanup)   // Посылаем сигнал для остановки
+	cache.cleanupTicker.Stop() // Остановка тика
 }

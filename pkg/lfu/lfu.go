@@ -3,6 +3,7 @@ package lfu
 import (
 	"fmt"
 	"sync"
+	"time"
 )
 
 type Set[T comparable] struct {
@@ -10,12 +11,16 @@ type Set[T comparable] struct {
 }
 
 type Cache[KeyT comparable, ValueT any] struct {
-	capacity int
-	values   map[KeyT]ValueT
-	freq     map[KeyT]int
-	keys     map[int]*Set[KeyT]
-	minFreq  int
-	mutex    sync.Mutex
+	capacity      int
+	values        map[KeyT]ValueT
+	freq          map[KeyT]int
+	keys          map[int]*Set[KeyT]
+	minFreq       int
+	ttl           time.Duration      // Время жизни для элементов
+	expiry        map[KeyT]time.Time // Время истечения для элементов
+	mutex         sync.RWMutex
+	cleanupTicker *time.Ticker
+	stopCleanup   chan struct{}
 }
 
 func NewSet[T comparable]() *Set[T] {
@@ -24,14 +29,22 @@ func NewSet[T comparable]() *Set[T] {
 	}
 }
 
-func NewCache[KeyT comparable, ValueT any](capacity int) *Cache[KeyT, ValueT] {
-	return &Cache[KeyT, ValueT]{
-		capacity: capacity,
-		values:   make(map[KeyT]ValueT),
-		freq:     make(map[KeyT]int),
-		keys:     make(map[int]*Set[KeyT]),
-		minFreq:  0,
+func NewCache[KeyT comparable, ValueT any](capacity int, ttl time.Duration, cleanupInterval time.Duration) *Cache[KeyT, ValueT] {
+	cache := &Cache[KeyT, ValueT]{
+		capacity:      capacity,
+		values:        make(map[KeyT]ValueT),
+		freq:          make(map[KeyT]int),
+		keys:          make(map[int]*Set[KeyT]),
+		minFreq:       0,
+		ttl:           ttl,
+		expiry:        make(map[KeyT]time.Time),
+		stopCleanup:   make(chan struct{}),
+		cleanupTicker: time.NewTicker(cleanupInterval),
 	}
+
+	go cache.cleanupExpired() // Запуск фоновой очистки устаревших элементов
+
+	return cache
 }
 
 func (s *Set[T]) Add(val T) {
@@ -44,7 +57,7 @@ func (s *Set[T]) Remove(val T) {
 
 func (s *Set[T]) Pop() T {
 	if len(s.items) == 0 {
-		panic("Pop() from the emty Set")
+		panic("Pop() from the empty Set")
 	}
 	for key := range s.items {
 		s.Remove(key)
@@ -62,13 +75,19 @@ func (s *Set[T]) String() string {
 	return fmt.Sprintf("%v", s.items)
 }
 
-func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (any, bool) {
+func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 	cache.mutex.Lock()
 	defer cache.mutex.Unlock()
 
 	if _, ok := cache.values[key]; !ok {
-		return nil, false
+		return *new(ValueT), false
 	}
+
+	if time.Now().After(cache.expiry[key]) { // Проверка на истечение времени
+		cache.evictKey(key)
+		return *new(ValueT), false
+	}
+
 	value := cache.values[key]
 	freq := cache.freq[key]
 	cache.update(key, value, freq)
@@ -88,6 +107,7 @@ func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 		}
 		cache.values[key] = value
 		cache.freq[key] = 1
+		cache.expiry[key] = time.Now().Add(cache.ttl) // Установка времени истечения
 		if _, ok := cache.keys[1]; !ok {
 			cache.keys[1] = NewSet[KeyT]()
 		}
@@ -106,6 +126,7 @@ func (cache *Cache[KeyT, ValueT]) update(key KeyT, value ValueT, freq int) {
 	}
 
 	cache.values[key] = value
+	cache.expiry[key] = time.Now().Add(cache.ttl) // Обновление времени истечения
 	cache.freq[key] = freq + 1
 	if _, ok := cache.keys[freq+1]; !ok {
 		cache.keys[freq+1] = NewSet[KeyT]()
@@ -120,4 +141,48 @@ func (cache *Cache[KeyT, ValueT]) evict() {
 	}
 	delete(cache.values, key)
 	delete(cache.freq, key)
+	delete(cache.expiry, key) // Удаление из expiry
+}
+
+// cleanupExpired проверяет и удаляет устаревшие элементы из кэша
+func (cache *Cache[KeyT, ValueT]) cleanupExpired() {
+	for {
+		select {
+		case <-cache.cleanupTicker.C:
+			cache.mutex.Lock()
+			for key, exp := range cache.expiry {
+				if time.Now().After(exp) {
+					cache.evictKey(key)
+				}
+			}
+			cache.mutex.Unlock()
+		case <-cache.stopCleanup:
+			return
+		}
+	}
+}
+
+// EvictKey удаляет указанный ключ из кэша
+func (cache *Cache[KeyT, ValueT]) evictKey(key KeyT) {
+	if _, ok := cache.values[key]; ok {
+		freq := cache.freq[key]
+		cache.keys[freq].Remove(key)
+
+		if cache.keys[freq].IsEmpty() {
+			delete(cache.keys, freq)
+			if cache.minFreq == freq {
+				cache.minFreq += 1
+			}
+		}
+
+		delete(cache.values, key)
+		delete(cache.freq, key)
+		delete(cache.expiry, key) // Удаляем ключ из expiry
+	}
+}
+
+// StopCleanup останавливает процесс очистки
+func (cache *Cache[KeyT, ValueT]) StopCleanup() {
+	close(cache.stopCleanup)   // Посылаем сигнал для остановки
+	cache.cleanupTicker.Stop() // Остановка тика
 }
