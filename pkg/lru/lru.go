@@ -3,7 +3,7 @@ package lru
 import (
 	"time"
 
-	cache "github.com/ivansevryukov1995/cache-sev/pkg"
+	"github.com/ivansevryukov1995/cache-sev/pkg/cache"
 )
 
 type Node[KeyT comparable, ValueT any] struct {

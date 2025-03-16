@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	cache "github.com/ivansevryukov1995/cache-sev/pkg"
+	"github.com/ivansevryukov1995/cache-sev/pkg/cache"
 )
 
 type Set[T comparable] struct {
@@ -73,6 +73,7 @@ func (cache *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 		return *new(ValueT), false
 	}
 
+	// Проверяем, истек ли ключ
 	if time.Now().After(cache.expiry[key]) {
 		cache.evictKey(key)
 		return *new(ValueT), false
@@ -88,10 +89,11 @@ func (cache *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 	cache.base.Mutex.Lock()
 	defer cache.base.Mutex.Unlock()
 
-	if _, ok := cache.freq[key]; ok {
-		freq := cache.freq[key]
+	// Если ключ уже есть, обновляем его
+	if freq, found := cache.freq[key]; found {
 		cache.update(key, value, freq)
 	} else {
+		// Ключа нет, нужно добавить его
 		if len(cache.values) >= cache.capacity {
 			cache.evict()
 		}

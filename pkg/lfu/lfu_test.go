@@ -40,6 +40,7 @@ func TestCacheRaceCondition(t *testing.T) {
 			t.Errorf("Expected value for key %d to be 'value%d', got '%v'", i, i, value)
 		}
 	}
+	cache.base.StopCleanup() // Правильная остановка фонового процесса
 }
 
 func TestCachePutAndGet(t *testing.T) {
@@ -77,6 +78,8 @@ func TestCachePutAndGet(t *testing.T) {
 	if v, found := cache.Get(3); !found || v != "value3" {
 		t.Errorf("Expected to find key 3, got %v", v)
 	}
+
+	cache.base.StopCleanup() // Правильная остановка фонового процесса
 }
 
 func TestCacheEviction(t *testing.T) {
@@ -116,4 +119,5 @@ func TestCacheEviction(t *testing.T) {
 	if v, found := cache.Get(4); !found || v != "value4" {
 		t.Errorf("Expected to find key 4, got %v", v)
 	}
+	cache.base.StopCleanup()
 }
