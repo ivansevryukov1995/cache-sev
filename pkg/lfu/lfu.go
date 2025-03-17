@@ -10,8 +10,8 @@ import (
 
 // CacheItem структура для хранения значения, частоты и времени истечения
 type CacheItem[ValueT any] struct {
-	Value      ValueT
-	Expiration time.Time
+	Value     ValueT
+	ExpiresAt time.Time
 }
 
 // Cache структура описывает кэш с использованием алгоритма LFU
@@ -43,7 +43,7 @@ func (c *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 	defer c.Lock.RUnlock()
 
 	item, exists := c.Values[key]
-	if !exists || time.Now().After(item.Expiration) {
+	if !exists || time.Now().After(item.ExpiresAt) {
 		if exists {
 			c.Logger.Log("Removing expired key: " + fmt.Sprintf("%v", key)) // Логирование удаления истекшего ключа
 		}
@@ -72,7 +72,7 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 		c.Logger.Log("Evicted an item from cache due to capacity") // Логирование удаления из-за переполнения
 	}
 
-	c.Values[key] = CacheItem[ValueT]{Value: value, Expiration: time.Now().Add(c.TTL)}
+	c.Values[key] = CacheItem[ValueT]{Value: value, ExpiresAt: time.Now().Add(c.TTL)}
 	c.Freq[key] = 1
 	c.addToFreqSet(key, 1)
 
@@ -92,7 +92,7 @@ func (c *Cache[KeyT, ValueT]) update(key KeyT, value ValueT) {
 		}
 	}
 
-	c.Values[key] = CacheItem[ValueT]{Value: value, Expiration: time.Now().Add(c.TTL)} // Обновляем время истечения
+	c.Values[key] = CacheItem[ValueT]{Value: value, ExpiresAt: time.Now().Add(c.TTL)} // Обновляем время истечения
 	c.Freq[key]++
 	c.addToFreqSet(key, c.Freq[key])
 }
