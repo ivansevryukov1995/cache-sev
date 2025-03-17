@@ -8,9 +8,8 @@ import (
 func TestCachePutAndGet(t *testing.T) {
 	const cacheCapacity = 2
 	const ttl = time.Millisecond * 100
-	const cleanupInterval = time.Millisecond * 10
 
-	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
+	cache := NewCache[int, string](cacheCapacity, ttl)
 
 	cache.Put(1, "value1")
 	cache.Put(2, "value2")
@@ -40,15 +39,13 @@ func TestCachePutAndGet(t *testing.T) {
 		t.Errorf("Expected to find key 3, got %v", v)
 	}
 
-	cache.base.StopCleanup()
 }
 
 func TestCacheEviction(t *testing.T) {
 	const cacheCapacity = 2
 	const ttl = time.Millisecond * 200
-	const cleanupInterval = time.Millisecond * 10
 
-	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
+	cache := NewCache[int, string](cacheCapacity, ttl)
 
 	cache.Put(1, "value1")
 	cache.Put(2, "value2")
@@ -73,9 +70,8 @@ func TestCacheEviction(t *testing.T) {
 func TestCacheTTLExpiration(t *testing.T) {
 	const cacheCapacity = 2
 	const ttl = time.Millisecond * 100
-	const cleanupInterval = time.Millisecond * 10
 
-	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
+	cache := NewCache[int, string](cacheCapacity, ttl)
 
 	cache.Put(1, "value1")
 	// Подождем, чтобы считываемое значение истекло
@@ -90,9 +86,8 @@ func TestCacheTTLExpiration(t *testing.T) {
 func TestCacheCleanup(t *testing.T) {
 	const cacheCapacity = 2
 	const ttl = time.Millisecond * 100
-	const cleanupInterval = time.Millisecond * 10
 
-	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
+	cache := NewCache[int, string](cacheCapacity, ttl)
 
 	cache.Put(1, "value1")
 	cache.Put(2, "value2")
@@ -100,7 +95,6 @@ func TestCacheCleanup(t *testing.T) {
 	time.Sleep(ttl + time.Millisecond*10)
 
 	// Запускаем очистку
-	cache.base.StopCleanup()
 
 	if _, found := cache.Get(1); found {
 		t.Errorf("Expected to not find key 1 after TTL expiration")

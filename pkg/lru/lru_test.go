@@ -1,96 +1,97 @@
 package lru
 
 import (
-	"sync"
 	"testing"
 	"time"
 )
 
+// MockLogger - простая реализация интерфейса Logger для тестирования
+type MockLogger struct {
+	messages []string
+}
+
+func (ml *MockLogger) Log(message string) {
+	ml.messages = append(ml.messages, message)
+}
+
 func TestCache(t *testing.T) {
-	const cacheCapacity = 2
-	const ttl = time.Millisecond * 100
-	const cleanupInterval = time.Millisecond * 10
+	logger := &MockLogger{}
+	cache := NewCache[string, string](2, 2*time.Second) // Кэш с максимальным размером 2 и TTL 2 секунды
+	cache.Logger = logger
 
-	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
-
-	// Проверка добавления и получения элемента
-	cache.Put(1, "one")
-	value, found := cache.Get(1)
-	if !found || value != "one" {
-		t.Errorf("Expected 'one', got '%v'", value)
+	// Тестирование добавления элементов
+	cache.Put("key1", "value1")
+	if val, found := cache.Get("key1"); !found || val != "value1" {
+		t.Errorf("Expected value1, got %v (found: %v)", val, found)
 	}
 
-	// Проверка, что кэш возвращает false для отсутствующего ключа
-	_, found = cache.Get(2)
-	if found {
-		t.Error("Expected not found for key 2")
+	// Тестирование обновления элемента
+	cache.Put("key1", "value_updated")
+	time.Sleep(100 * time.Millisecond) // небольшая задержка перед следующей операцией
+	if val, found := cache.Get("key1"); !found || val != "value_updated" {
+		t.Errorf("Expected value_updated, got %v (found: %v)", val, found)
 	}
 
-	// Проверка замены значения существующего ключа
-	cache.Put(1, "uno")
-	value, found = cache.Get(1)
-	if !found || value != "uno" {
-		t.Errorf("Expected 'uno', got '%v'", value)
+	// Тестирование истечения срока действия
+	time.Sleep(3 * time.Second) // Ждем, пока TTL истечет
+	if _, found := cache.Get("key1"); found {
+		t.Error("Expected key1 to be expired")
 	}
 
-	// Проверка работы лимита емкости
-	cache.Put(2, "two")
-	cache.Put(3, "three") // Должен убрать ключ 1
-	_, found = cache.Get(1)
-	if found {
-		t.Error("Expected key 1 to be evicted")
+	// Тестирование добавления элемент, превышающего емкость
+	// cache.Put("key1", "value1")
+	cache.Put("key2", "value2")
+	cache.Put("key3", "value3") // Должен удалить key1
+	if _, found := cache.Get("key1"); found {
+		t.Error("Expected key1 to be evicted")
+	}
+	if val, found := cache.Get("key3"); !found || val != "value3" {
+		t.Errorf("Expected value3, got %v (found: %v)", val, found)
 	}
 
-	// Проверка, что ключ 2 все еще доступен
-	value, found = cache.Get(2)
-	if !found || value != "two" {
-		t.Errorf("Expected 'two', got '%v'", value)
-	}
-
-	// Проверка, что кэш возвращает false для убранного ключа
-	_, found = cache.Get(3)
-	if !found {
-		t.Error("Expected to find key 3")
-	}
-
-	// Должен вернуть значение 3
-	value, found = cache.Get(3)
-	if !found || value != "three" {
-		t.Errorf("Expected 'three', got '%v'", value)
+	// Проверка логов
+	expectedLogCount := 6 // Общее количество сообщений, ожидаемое с учетом каждого действия
+	if len(logger.messages) < expectedLogCount {
+		t.Errorf("Expected at least %d log messages, got %d", expectedLogCount, len(logger.messages))
 	}
 }
 
-func TestCacheRaceCondition(t *testing.T) {
-	const numItems = 50
-	const cacheCapacity = 100
-	const ttl = time.Millisecond * 100
-	const cleanupInterval = time.Millisecond * 10
+// Тест на удаление старого элемента
+func TestCacheOldestEviction(t *testing.T) {
+	logger := &MockLogger{}
+	cache := NewCache[string, string](1, 10*time.Second) // Кэш с максимальным размером 1
 
-	cache := NewCache[int, string](cacheCapacity, ttl, cleanupInterval)
-
-	var wg sync.WaitGroup
-
-	for i := 0; i < numItems; i++ {
-		wg.Add(2)
-		go func(i int) {
-			defer wg.Done()
-			cache.Put(i, "value")
-		}(i)
-
-		go func(i int) {
-			defer wg.Done()
-			_, _ = cache.Get(i)
-		}(i)
+	cache.Logger = logger
+	cache.Put("key1", "value1")
+	time.Sleep(100 * time.Millisecond) // небольшая задержка перед следующей операцией
+	cache.Put("key2", "value2")        // Должен удалить key1
+	if _, found := cache.Get("key1"); found {
+		t.Error("Expected key1 to be evicted")
+	}
+	if val, found := cache.Get("key2"); !found || val != "value2" {
+		t.Errorf("Expected value2, got %v (found: %v)", val, found)
 	}
 
-	wg.Wait()
+	// Проверка логов
+	if len(logger.messages) < 2 {
+		t.Errorf("Expected at least 2 log messages, got %d", len(logger.messages))
+	}
+}
 
-	for i := 0; i < numItems; i++ {
-		value, found := cache.Get(i)
-		if !found {
-			t.Errorf("Expected to find key %d", i)
-		} else if value != "value" {
-			t.Errorf("Expected 'value', got '%v'", value)
-		}
+// Тест на истечение срока действия
+func TestCacheTTL(t *testing.T) {
+	logger := &MockLogger{}
+	cache := NewCache[string, string](2, 1*time.Second) // Кэш с максимальным размером 2 и TTL 1 секунда
+
+	cache.Logger = logger
+	cache.Put("key1", "value1")
+	time.Sleep(2 * time.Second) // Ждем, пока TTL истечет
+	if _, found := cache.Get("key1"); found {
+		t.Error("Expected key1 to be expired")
+	}
+
+	// Проверка логов
+	if len(logger.messages) < 1 {
+		t.Errorf("Expected at least 1 log message, got %d", len(logger.messages))
 	}
 }

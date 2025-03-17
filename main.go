@@ -17,7 +17,7 @@ import (
 var cache *lru.Cache[int, string]
 
 func init() {
-	const cacheCapacity = 100
+	const cacheCapacity = 2
 	const ttl = time.Second * 10
 
 	// cache = lfu.NewCache[int, string](cacheCapacity, ttl)
@@ -60,3 +60,5 @@ func main() {
 	http.HandleFunc("/compute", getHandler)
 	http.ListenAndServe(":8080", nil)
 }
+
+// curl "http://localhost:8080/compute?key=1"
