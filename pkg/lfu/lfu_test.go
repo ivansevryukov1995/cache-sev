@@ -9,10 +9,10 @@ func TestCachePutAndGet(t *testing.T) {
 	const cacheCapacity = 2
 	const ttl = time.Millisecond * 100
 
-	cache := NewCache[int, string](cacheCapacity, ttl)
+	cache := NewCache[int, string](cacheCapacity)
 
-	cache.Put(1, "value1")
-	cache.Put(2, "value2")
+	cache.Put(1, "value1", ttl)
+	cache.Put(2, "value2", ttl)
 
 	if v, found := cache.Get(1); !found || v != "value1" {
 		t.Errorf("Expected to find key 1, got %v", v)
@@ -22,7 +22,7 @@ func TestCachePutAndGet(t *testing.T) {
 	}
 
 	// Добавляем третий элемент, который должен вызвать вытеснение
-	cache.Put(3, "value3")
+	cache.Put(3, "value3", ttl)
 
 	// Ключ 1 должен быть вытеснен, поэтому мы не должны его найти
 	if _, found := cache.Get(1); found {
@@ -45,12 +45,12 @@ func TestCacheEviction(t *testing.T) {
 	const cacheCapacity = 2
 	const ttl = time.Millisecond * 200
 
-	cache := NewCache[int, string](cacheCapacity, ttl)
+	cache := NewCache[int, string](cacheCapacity)
 
-	cache.Put(1, "value1")
-	cache.Put(2, "value2")
+	cache.Put(1, "value1", ttl)
+	cache.Put(2, "value2", ttl)
 
-	cache.Put(3, "value3") // Вытеснит один элемент из кэша
+	cache.Put(3, "value3", ttl) // Вытеснит один элемент из кэша
 
 	// Ключ 1 должен быть вытеснен, потому что он использовался реже
 	if _, found := cache.Get(1); found {
@@ -71,9 +71,9 @@ func TestCacheTTLExpiration(t *testing.T) {
 	const cacheCapacity = 2
 	const ttl = time.Millisecond * 100
 
-	cache := NewCache[int, string](cacheCapacity, ttl)
+	cache := NewCache[int, string](cacheCapacity)
 
-	cache.Put(1, "value1")
+	cache.Put(1, "value1", ttl)
 	// Подождем, чтобы считываемое значение истекло
 	time.Sleep(ttl + time.Millisecond*10)
 
@@ -87,10 +87,10 @@ func TestCacheCleanup(t *testing.T) {
 	const cacheCapacity = 2
 	const ttl = time.Millisecond * 100
 
-	cache := NewCache[int, string](cacheCapacity, ttl)
+	cache := NewCache[int, string](cacheCapacity)
 
-	cache.Put(1, "value1")
-	cache.Put(2, "value2")
+	cache.Put(1, "value1", ttl)
+	cache.Put(2, "value2", ttl)
 	// Подождем, чтобы ключи истекли
 	time.Sleep(ttl + time.Millisecond*10)
 

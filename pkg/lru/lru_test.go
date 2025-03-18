@@ -16,7 +16,7 @@ func (ml *MockLogger) Log(message string) {
 
 func TestCache(t *testing.T) {
 	logger := &MockLogger{}
-	cache := NewCache[string, string](2, 2*time.Second) // Кэш с максимальным размером 2 и TTL 2 секунды
+	cache := NewCache[string, string](2) // Кэш с максимальным размером 2 и TTL 2 секунды
 	cache.Logger = logger
 
 	// Тестирование добавления элементов
@@ -59,7 +59,7 @@ func TestCache(t *testing.T) {
 // Тест на удаление старого элемента
 func TestCacheOldestEviction(t *testing.T) {
 	logger := &MockLogger{}
-	cache := NewCache[string, string](1, 10*time.Second) // Кэш с максимальным размером 1
+	cache := NewCache[string, string](1) // Кэш с максимальным размером 1
 
 	cache.Logger = logger
 	cache.Put("key1", "value1")

@@ -15,16 +15,14 @@ type Cache[KeyT comparable, ValueT any] struct {
 	Hash     map[KeyT]*pkg.Node[KeyT, ValueT]
 	List     *pkg.List[KeyT, ValueT]
 	Lock     sync.RWMutex
-	TTL      time.Duration
 	Logger   pkg.Logger // Добавлено для логирования
 }
 
-func NewCache[KeyT comparable, ValueT any](capacity int, ttl time.Duration) *Cache[KeyT, ValueT] {
+func NewCache[KeyT comparable, ValueT any](capacity int) *Cache[KeyT, ValueT] {
 	return &Cache[KeyT, ValueT]{
 		Capacity: capacity,
 		Hash:     make(map[KeyT]*pkg.Node[KeyT, ValueT]),
 		List:     pkg.NewList[KeyT, ValueT](),
-		TTL:      ttl,
 	}
 }
 
@@ -34,18 +32,8 @@ func (c *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 	c.Lock.RLock()
 	defer c.Lock.RUnlock()
 
-	node, found := c.Hash[key]
-	if found {
-		// Проверяем, не истек ли срок действия элемента
-		if time.Now().After(node.ExpiresAt) {
-			// Элемент устарел, удаляем его
-			c.removeAndDeleteNode(node)
-
-			c.Logger.Log("Key expired: " + fmt.Sprintf("%v", key))
-
-			var zeroValue ValueT
-			return zeroValue, false
-		}
+	node, exists := c.Hash[key]
+	if exists {
 		c.List.MoveToFront(node)
 
 		c.Logger.Log("Retrieved key: " + fmt.Sprintf("%v", key))
@@ -61,16 +49,13 @@ func (c *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 
 // Put добавляет новое значение в кэш по заданному ключу с установленным временем жизни.
 // Если ключ уже существует, обновляет значение и перемещает его на переднюю позицию.
-func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
+func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
 
-	expiryTime := time.Now().Add(c.TTL) // Устанавливаем время истечения с учетом общего TTL
-
 	if node, found := c.Hash[key]; found {
-		// Обновляем значение и время истечения узла, перемещаем его на переднюю позицию
+		// Обновляем значение, перемещаем его на переднюю позицию
 		node.Value = value
-		node.ExpiresAt = expiryTime
 		c.List.MoveToFront(node)
 
 		c.Logger.Log("Updated key: " + fmt.Sprintf("%v", key))
@@ -78,29 +63,35 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 		return
 	}
 
-	// Если кэш заполнен, нужно удалить последний элемент
+	// Здесь испоняется политика вытеснения ключа из кеша LRU
+	// Если кэш заполнен, нужно удалить последний элемент.
 	if len(c.Hash) >= c.Capacity {
 		back := c.List.Back()
 		if back != nil {
-			c.removeAndDeleteNode(back)
+			c.List.Remove(back)
+			delete(c.Hash, back.Key)
 			c.Logger.Log("Removed oldest key: " + fmt.Sprintf("%v", back.Key))
 		}
 	}
 
 	// Создаем новый узел и добавляем его в кэш
 	newNode := &pkg.Node[KeyT, ValueT]{
-		Key:       key,
-		Value:     value,
-		ExpiresAt: expiryTime,
+		Key:   key,
+		Value: value,
 	}
 	c.List.PushToFront(newNode)
 	c.Hash[key] = newNode
 
 	c.Logger.Log("Added key: " + fmt.Sprintf("%v", key))
-}
 
-// removeAndDeleteNode удаляет узел и его ключ из кэша.
-func (c *Cache[KeyT, ValueT]) removeAndDeleteNode(node *pkg.Node[KeyT, ValueT]) {
-	c.List.Remove(node)
-	delete(c.Hash, node.Key)
+	if ttl > 0 {
+		go func() {
+			<-time.After(ttl)
+			c.Lock.Lock()
+			defer c.Lock.Unlock()
+			c.List.Remove(newNode)
+			delete(c.Hash, key)
+			c.Logger.Log("Removed key with ttl expired: " + fmt.Sprintf("%v", key))
+		}()
+	}
 }
