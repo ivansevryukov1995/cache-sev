@@ -89,9 +89,11 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 			<-time.After(ttl)
 			c.Lock.Lock()
 			defer c.Lock.Unlock()
-			c.List.Remove(newNode)
-			delete(c.Hash, key)
-			c.Logger.Log("Removed key with ttl expired: " + fmt.Sprintf("%v", key))
+			if _, exists := c.Hash[key]; exists {
+				c.List.Remove(newNode)
+				delete(c.Hash, key)
+				c.Logger.Log("Removed key with ttl expired: " + fmt.Sprintf("%v", key))
+			}
 		}()
 	}
 }

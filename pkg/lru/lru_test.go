@@ -20,13 +20,13 @@ func TestCache(t *testing.T) {
 	cache.Logger = logger
 
 	// Тестирование добавления элементов
-	cache.Put("key1", "value1")
+	cache.Put("key1", "value1", time.Second)
 	if val, found := cache.Get("key1"); !found || val != "value1" {
 		t.Errorf("Expected value1, got %v (found: %v)", val, found)
 	}
 
 	// Тестирование обновления элемента
-	cache.Put("key1", "value_updated")
+	cache.Put("key1", "value_updated", time.Second)
 	time.Sleep(100 * time.Millisecond) // небольшая задержка перед следующей операцией
 	if val, found := cache.Get("key1"); !found || val != "value_updated" {
 		t.Errorf("Expected value_updated, got %v (found: %v)", val, found)
@@ -40,8 +40,8 @@ func TestCache(t *testing.T) {
 
 	// Тестирование добавления элемент, превышающего емкость
 	// cache.Put("key1", "value1")
-	cache.Put("key2", "value2")
-	cache.Put("key3", "value3") // Должен удалить key1
+	cache.Put("key2", "value2", time.Second)
+	cache.Put("key3", "value3", time.Second) // Должен удалить key1
 	if _, found := cache.Get("key1"); found {
 		t.Error("Expected key1 to be evicted")
 	}
@@ -62,9 +62,9 @@ func TestCacheOldestEviction(t *testing.T) {
 	cache := NewCache[string, string](1) // Кэш с максимальным размером 1
 
 	cache.Logger = logger
-	cache.Put("key1", "value1")
-	time.Sleep(100 * time.Millisecond) // небольшая задержка перед следующей операцией
-	cache.Put("key2", "value2")        // Должен удалить key1
+	cache.Put("key1", "value1", time.Second)
+	time.Sleep(100 * time.Millisecond)       // небольшая задержка перед следующей операцией
+	cache.Put("key2", "value2", time.Second) // Должен удалить key1
 	if _, found := cache.Get("key1"); found {
 		t.Error("Expected key1 to be evicted")
 	}
@@ -81,10 +81,10 @@ func TestCacheOldestEviction(t *testing.T) {
 // Тест на истечение срока действия
 func TestCacheTTL(t *testing.T) {
 	logger := &MockLogger{}
-	cache := NewCache[string, string](2, 1*time.Second) // Кэш с максимальным размером 2 и TTL 1 секунда
+	cache := NewCache[string, string](2) // Кэш с максимальным размером 2 и TTL 1 секунда
 
 	cache.Logger = logger
-	cache.Put("key1", "value1")
+	cache.Put("key1", "value1", time.Second)
 	time.Sleep(2 * time.Second) // Ждем, пока TTL истечет
 	if _, found := cache.Get("key1"); found {
 		t.Error("Expected key1 to be expired")
