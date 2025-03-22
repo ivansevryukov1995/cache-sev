@@ -29,7 +29,9 @@ func NewCache[KeyT comparable, ValueT any](capacity int) *Cache[KeyT, ValueT] {
 	}
 }
 
-func (c *Cache[KeyT, ValueT]) Get(key KeyT) (any, bool) {
+// Get извлекает значение из кэша по заданному ключу.
+// Возвращает значение и true, если ключ найден, иначе возвращает нулевое значение и false.
+func (c *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
 
@@ -47,6 +49,8 @@ func (c *Cache[KeyT, ValueT]) Get(key KeyT) (any, bool) {
 	return value, true
 }
 
+// Put добавляет новое значение в кэш по заданному ключу с установленным временем жизни.
+// Если ключ уже существует, обновляет значение, если ключ уже существует, если не существует
 func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
@@ -139,4 +143,8 @@ func (c *Cache[KeyT, ValueT]) removeLocked(key KeyT) {
 		}
 		c.Logger.Log("Removed key: " + fmt.Sprintf("%v", key)) // Логирование удаления ключа
 	}
+}
+
+func (c *Cache[KeyT, ValueT]) SetLogger(l pkg.Logger) {
+	c.Logger = l
 }

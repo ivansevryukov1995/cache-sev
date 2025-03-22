@@ -22,32 +22,31 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/ivansevryukov1995/cache-sev/pkg"
-	"github.com/ivansevryukov1995/cache-sev/pkg/lru"
-    // "github.com/ivansevryukov1995/cache-sev/pkg/lfu"
 )
 
-// var cache *lfu.Cache[int, string]
+var cache Cacher[int, string]
 
-var cache *lru.Cache[int, string]
+const cacheCapacity = 2
+const ttl = time.Second * 10
 
 func init() {
-	const cacheCapacity = 2
-	const ttl = time.Second * 10
-
-	// cache = lfu.NewCache[int, string](cacheCapacity, ttl)
-	cache = lru.NewCache[int, string](cacheCapacity, ttl)
-	cache.Logger = pkg.ConsoleLogger{}
+	cache, err := NewCache[int, string]("lru", cacheCapacity)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cache.SetLogger(pkg.ConsoleLogger{})
 }
 
 func computeExpensiveOperation(key int) string {
 	// Simulation of an expensive operation
-	time.Sleep(time.Second * 5) // 200 мс
+	time.Sleep(time.Millisecond * 200) // 200 мс
 	return fmt.Sprintf("Result for key %d is %d", key, rand.Intn(1000))
 }
 
@@ -70,7 +69,7 @@ func getHandler(w http.ResponseWriter, r *http.Request) {
 	result := computeExpensiveOperation(key)
 
 	// Saving the result in the cache
-	cache.Put(key, result)
+	cache.Put(key, result, ttl)
 
 	w.Header().Set("X-Cache", "MISS")
 	json.NewEncoder(w).Encode(result)

@@ -97,3 +97,7 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 		}()
 	}
 }
+
+func (c *Cache[KeyT, ValueT]) SetLogger(l pkg.Logger) {
+	c.Logger = l
+}
