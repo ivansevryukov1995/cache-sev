@@ -27,8 +27,6 @@ import (
 	"net/http"
 	"strconv"
 	"time"
-
-	"github.com/ivansevryukov1995/cache-sev/pkg"
 )
 
 var cache Cacher[int, string]
@@ -41,7 +39,7 @@ func init() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	cache.SetLogger(pkg.ConsoleLogger{})
+	fmt.Println(cache)
 }
 
 func computeExpensiveOperation(key int) string {
@@ -79,6 +77,7 @@ func main() {
 	http.HandleFunc("/compute", getHandler)
 	http.ListenAndServe(":8080", nil)
 }
+
 
 ```
 Use the `curl` command to save the `key` value to the cache:

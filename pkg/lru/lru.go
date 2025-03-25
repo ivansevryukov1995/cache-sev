@@ -1,7 +1,6 @@
 package lru
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -15,7 +14,6 @@ type Cache[KeyT comparable, ValueT any] struct {
 	Hash     map[KeyT]*pkg.Node[KeyT, ValueT]
 	List     *pkg.List[KeyT, ValueT]
 	Lock     sync.RWMutex
-	Logger   pkg.Logger // Добавлено для логирования
 }
 
 func NewCache[KeyT comparable, ValueT any](capacity int) *Cache[KeyT, ValueT] {
@@ -36,12 +34,8 @@ func (c *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 	if exists {
 		c.List.MoveToFront(node)
 
-		c.Logger.Log("Retrieved key: " + fmt.Sprintf("%v", key))
-
 		return node.Value, true
 	}
-
-	c.Logger.Log("Key not found: " + fmt.Sprintf("%v", key))
 
 	var zeroValue ValueT
 	return zeroValue, false
@@ -53,25 +47,16 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
 
-	if node, found := c.Hash[key]; found {
+	if node, ok := c.Hash[key]; ok {
 		// Обновляем значение, перемещаем его на переднюю позицию
 		node.Value = value
 		c.List.MoveToFront(node)
 
-		c.Logger.Log("Updated key: " + fmt.Sprintf("%v", key))
-
 		return
 	}
 
-	// Здесь испоняется политика вытеснения ключа из кеша LRU
-	// Если кэш заполнен, нужно удалить последний элемент.
 	if len(c.Hash) >= c.Capacity {
-		back := c.List.Back()
-		if back != nil {
-			c.List.Remove(back)
-			delete(c.Hash, back.Key)
-			c.Logger.Log("Removed oldest key: " + fmt.Sprintf("%v", back.Key))
-		}
+		c.evict()
 	}
 
 	// Создаем новый узел и добавляем его в кэш
@@ -82,8 +67,6 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 	c.List.PushToFront(newNode)
 	c.Hash[key] = newNode
 
-	c.Logger.Log("Added key: " + fmt.Sprintf("%v", key))
-
 	if ttl > 0 {
 		go func() {
 			<-time.After(ttl)
@@ -92,12 +75,19 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 			if _, exists := c.Hash[key]; exists {
 				c.List.Remove(newNode)
 				delete(c.Hash, key)
-				c.Logger.Log("Removed key with ttl expired: " + fmt.Sprintf("%v", key))
+
 			}
 		}()
 	}
 }
 
-func (c *Cache[KeyT, ValueT]) SetLogger(l pkg.Logger) {
-	c.Logger = l
+// Наиболее давно использовавшиеся (Least Recently Used – LRU):
+// убирает запись, которая использовалась наиболее давно.
+func (c *Cache[KeyT, ValueT]) evict() {
+	back := c.List.Back()
+	if back != nil {
+		c.List.Remove(back)
+		delete(c.Hash, back.Key)
+
+	}
 }

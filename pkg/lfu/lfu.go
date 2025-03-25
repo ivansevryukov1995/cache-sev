@@ -1,7 +1,6 @@
 package lfu
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
@@ -16,7 +15,6 @@ type Cache[KeyT comparable, ValueT any] struct {
 	Hash     map[int]*pkg.Set[KeyT]
 	MinFreq  int
 	Lock     sync.RWMutex
-	Logger   pkg.Logger // Добавлено для логирования
 }
 
 func NewCache[KeyT comparable, ValueT any](capacity int) *Cache[KeyT, ValueT] {
@@ -41,10 +39,7 @@ func (c *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 	}
 
 	value := c.Values[key]
-	freq := c.Freq[key]
-	c.updateLocked(key, value, freq)
-
-	c.Logger.Log("Retrieved key: " + fmt.Sprintf("%v", key)) // Логирование успешного извлечения
+	c.updateLocked(key, value)
 
 	return value, true
 }
@@ -55,42 +50,40 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
 
+	// Обновляем значение, если ключ уже существует
 	if _, ok := c.Freq[key]; ok {
-		freq := c.Freq[key]
-		c.updateLocked(key, value, freq)                      // Обновляем значение, если ключ уже существует
-		c.Logger.Log("Update key: " + fmt.Sprintf("%v", key)) // Логирование обновления ключа
-	} else {
-		// Здесь испоняется политика вытеснения ключа из кеша LFU
-		// Если кэш заполнен, нужно удалить наименее используемый элемент.
-		if len(c.Values) >= c.Capacity {
-			c.evict()
-			c.Logger.Log("Evicted an item from cache due to capacity") // Логирование удаления из-за переполнения
-		}
-		c.Values[key] = value
-		c.Freq[key] = 1
-		if _, ok := c.Hash[1]; !ok {
-			c.Hash[1] = pkg.NewSet[KeyT]()
-		}
-		c.Hash[1].Add(key)
-		c.MinFreq = 1
-		c.Logger.Log("Added key: " + fmt.Sprintf("%v", key)) // Логирование добавления ключа
+		c.updateLocked(key, value)
+		return
+	}
 
-		if ttl > 0 {
-			go func() {
-				<-time.After(ttl)
-				c.Lock.Lock()
-				defer c.Lock.Unlock()
-				if _, exists := c.Values[key]; exists {
-					c.removeLocked(key)
-					c.Logger.Log("Removed key with ttl expired: " + fmt.Sprintf("%v", key))
-				}
-			}()
-		}
+	if len(c.Values) >= c.Capacity {
+		c.evict()
+	}
+
+	c.Values[key] = value
+	c.Freq[key] = 1
+	if _, ok := c.Hash[1]; !ok {
+		c.Hash[1] = pkg.NewSet[KeyT]()
+	}
+	c.Hash[1].Add(key)
+	c.MinFreq = 1
+
+	if ttl > 0 {
+		go func() {
+			<-time.After(ttl)
+			c.Lock.Lock()
+			defer c.Lock.Unlock()
+			if _, exists := c.Values[key]; exists {
+				c.removeLocked(key)
+
+			}
+		}()
 	}
 }
 
 // updateLocked обновляет частоту использования элемента
-func (c *Cache[KeyT, ValueT]) updateLocked(key KeyT, value ValueT, freq int) {
+func (c *Cache[KeyT, ValueT]) updateLocked(key KeyT, value ValueT) {
+	freq := c.Freq[key]
 	c.Hash[freq].Remove(key)
 	if c.Hash[freq].IsEmpty() {
 		delete(c.Hash, freq)
@@ -106,10 +99,10 @@ func (c *Cache[KeyT, ValueT]) updateLocked(key KeyT, value ValueT, freq int) {
 	}
 	c.Hash[freq+1].Add(key)
 
-	c.Logger.Log(fmt.Sprintf("Key: %v, Frequency: %v", key, freq+1)) // Логирование частоты использования ключа
 }
 
-// evict удаляет наименее используемый элемент
+// Наименее часто использовавшиеся (Least Frequently Used — LFU):
+// убирает запись, которая использовалась наименее часто
 func (c *Cache[KeyT, ValueT]) evict() {
 	key := c.Hash[c.MinFreq].Pop()
 	if c.Hash[c.MinFreq].IsEmpty() {
@@ -117,7 +110,7 @@ func (c *Cache[KeyT, ValueT]) evict() {
 	}
 	delete(c.Values, key)
 	delete(c.Freq, key)
-	c.Logger.Log("Evicted key: " + fmt.Sprintf("%v", key)) // Логирование удаления наименее используемого ключа
+
 }
 
 // Remove удаляет элемент по ключу
@@ -141,10 +134,6 @@ func (c *Cache[KeyT, ValueT]) removeLocked(key KeyT) {
 				c.MinFreq++
 			}
 		}
-		c.Logger.Log("Removed key: " + fmt.Sprintf("%v", key)) // Логирование удаления ключа
-	}
-}
 
-func (c *Cache[KeyT, ValueT]) SetLogger(l pkg.Logger) {
-	c.Logger = l
+	}
 }
