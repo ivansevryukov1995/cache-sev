@@ -2,6 +2,7 @@ package lfu
 
 import (
 	"sync"
+	"time"
 
 	"github.com/ivansevryukov1995/cache-sev/pkg"
 )
@@ -145,7 +146,7 @@ func (c *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
 	return zeroValue, false
 }
 
-func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
+func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 	c.Lock.Lock()
 	defer c.Lock.Unlock()
 
@@ -172,6 +173,24 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 	newNode := NewDataNode(value, key, freq)
 	freq.List.PushToFront(newNode)
 	c.Hash[key] = newNode
+
+	if ttl > 0 {
+		go func() {
+			<-time.After(ttl)
+			c.Lock.Lock()
+			defer c.Lock.Unlock()
+			if _, exists := c.Hash[key]; exists {
+				parent := newNode.Parent
+				parent.List.Remove(newNode)
+				delete(c.Hash, key)
+				// Удаляем родительский узел частоты
+				// если двусвязного списка частоты пуст
+				if parent.List.Head.GetNext() == parent.List.Tail {
+					DeleteFreqNode(parent)
+				}
+			}
+		}()
+	}
 }
 
 // updateLocked обновляет частоту использования элемента

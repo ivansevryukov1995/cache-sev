@@ -31,10 +31,6 @@ func (l *DLList[KeyT, ValueT]) Remove(node NodeInterface[KeyT, ValueT]) {
 	if node.GetNext() != nil {
 		node.GetNext().SetPrev(node.GetPrev())
 	}
-
-	// Обнуляем указатели узла, чтобы избежать утечек памяти
-	// node.SetPrev(nil)
-	// node.SetNext(nil)
 }
 
 func (l *DLList[KeyT, ValueT]) MoveToFront(node NodeInterface[KeyT, ValueT]) {
