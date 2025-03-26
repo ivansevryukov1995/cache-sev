@@ -6,147 +6,6 @@ import (
 	"github.com/ivansevryukov1995/cache-sev/pkg"
 )
 
-// // Cache структура описывает кэш с использованием алгоритма LFU
-// type Cache[KeyT comparable, ValueT any] struct {
-// 	Capacity int
-// 	Values   map[KeyT]ValueT
-// 	Freq     map[KeyT]int
-// 	Hash     map[int]*pkg.Set[KeyT]
-// 	MinFreq  int
-// 	Lock     sync.RWMutex
-// }
-
-// func NewCache[KeyT comparable, ValueT any](capacity int) *Cache[KeyT, ValueT] {
-// 	return &Cache[KeyT, ValueT]{
-// 		Capacity: capacity,
-// 		Values:   make(map[KeyT]ValueT),
-// 		Freq:     make(map[KeyT]int),
-// 		Hash:     make(map[int]*pkg.Set[KeyT]),
-// 		MinFreq:  0,
-// 	}
-// }
-
-// // Get извлекает значение из кэша по заданному ключу.
-// // Возвращает значение и true, если ключ найден, иначе возвращает нулевое значение и false.
-// func (c *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
-// 	c.Lock.Lock()
-// 	defer c.Lock.Unlock()
-
-// 	if _, exists := c.Values[key]; !exists {
-// 		var zeroValue ValueT // Значение по умолчанию для типа ValueT
-// 		return zeroValue, false
-// 	}
-
-// 	value := c.Values[key]
-// 	c.updateLocked(key, value)
-
-// 	return value, true
-// }
-
-// // Put добавляет новое значение в кэш по заданному ключу с установленным временем жизни.
-// // Если ключ уже существует, обновляет значение, если ключ уже существует, если не существует
-// func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
-// 	c.Lock.Lock()
-// 	defer c.Lock.Unlock()
-
-// 	// Обновляем значение, если ключ уже существует
-// 	if _, ok := c.Freq[key]; ok {
-// 		c.updateLocked(key, value)
-// 		return
-// 	}
-
-// 	if len(c.Values) >= c.Capacity {
-// 		c.evict()
-// 	}
-
-// 	c.Values[key] = value
-// 	c.Freq[key] = 1
-// 	if _, ok := c.Hash[1]; !ok {
-// 		c.Hash[1] = pkg.NewSet[KeyT]()
-// 	}
-// 	c.Hash[1].Add(key)
-// 	c.MinFreq = 1
-
-// 	if ttl > 0 {
-// 		go func() {
-// 			<-time.After(ttl)
-// 			c.Lock.Lock()
-// 			defer c.Lock.Unlock()
-// 			if _, exists := c.Values[key]; exists {
-// 				c.removeLocked(key)
-
-// 			}
-// 		}()
-// 	}
-// }
-
-// // updateLocked обновляет частоту использования элемента
-// func (c *Cache[KeyT, ValueT]) updateLocked(key KeyT, value ValueT) {
-// 	freq := c.Freq[key]
-// 	c.Hash[freq].Remove(key)
-// 	if c.Hash[freq].IsEmpty() {
-// 		delete(c.Hash, freq)
-// 		if c.MinFreq == freq {
-// 			c.MinFreq += 1
-// 		}
-// 	}
-
-// 	c.Values[key] = value
-// 	c.Freq[key] = freq + 1
-// 	if _, ok := c.Hash[freq+1]; !ok {
-// 		c.Hash[freq+1] = pkg.NewSet[KeyT]()
-// 	}
-// 	c.Hash[freq+1].Add(key)
-
-// }
-
-// // Наименее часто использовавшиеся (Least Frequently Used — LFU):
-// // убирает запись, которая использовалась наименее часто
-// func (c *Cache[KeyT, ValueT]) evict() {
-// 	key := c.Hash[c.MinFreq].Pop()
-// 	if c.Hash[c.MinFreq].IsEmpty() {
-// 		delete(c.Hash, c.MinFreq)
-// 	}
-// 	delete(c.Values, key)
-// 	delete(c.Freq, key)
-
-// }
-
-// // Remove удаляет элемент по ключу
-// func (c *Cache[KeyT, ValueT]) Remove(key KeyT) {
-// 	c.Lock.Lock()
-// 	defer c.Lock.Unlock()
-
-// 	c.removeLocked(key)
-// }
-
-// // Метод removeLocked вызывается только под mutex
-// func (c *Cache[KeyT, ValueT]) removeLocked(key KeyT) {
-// 	if freq, exists := c.Freq[key]; exists {
-// 		c.Hash[freq].Remove(key)
-// 		delete(c.Values, key)
-// 		delete(c.Freq, key)
-
-// 		if c.Hash[freq].IsEmpty() {
-// 			delete(c.Hash, freq)
-// 			if c.MinFreq == freq {
-// 				c.MinFreq++
-// 			}
-// 		}
-
-// 	}
-// }
-
-// FreqNode представляет отдельный элемент в частоте.
-//
-//	type FreqNode[KeyT comparable, ValueT any] struct {
-//		Value int
-//		Nodes *pkg.Set[KeyT]
-//		Prev  *FreqNode[KeyT, ValueT]
-//		Next  *FreqNode[KeyT, ValueT]
-//	}
-//
-
 // Node представляет элемент в LFU кэше, который хранит данные и ссылку на его родительский узел частоты.
 type DataNode[KeyT comparable, ValueT any] struct {
 	Parent *FreqNode[KeyT, ValueT]
@@ -157,12 +16,11 @@ type DataNode[KeyT comparable, ValueT any] struct {
 }
 
 type FreqNode[KeyT comparable, ValueT any] struct {
-	Freq    int
-	FreqSet *pkg.Set[KeyT]
-	List    *pkg.DLList[KeyT, ValueT]
-	Value   ValueT
-	Prev    *FreqNode[KeyT, ValueT]
-	Next    *FreqNode[KeyT, ValueT]
+	Freq  int
+	List  *pkg.DLList[KeyT, ValueT]
+	Value ValueT
+	Prev  *FreqNode[KeyT, ValueT]
+	Next  *FreqNode[KeyT, ValueT]
 }
 
 // Cache представляет сам LFU кэш.
@@ -193,11 +51,10 @@ func NewDLList[KeyT comparable, ValueT any]() *pkg.DLList[KeyT, ValueT] {
 // NewFreqNode создает новый узел частоты с заданным значением.
 func NewFreqNode[KeyT comparable, ValueT any]() *FreqNode[KeyT, ValueT] {
 	return &FreqNode[KeyT, ValueT]{
-		Freq:    0,
-		FreqSet: pkg.NewSet[KeyT](),
-		List:    NewDLList[KeyT, ValueT](),
-		Prev:    nil,
-		Next:    nil,
+		Freq: 0,
+		List: NewDLList[KeyT, ValueT](),
+		Prev: nil,
+		Next: nil,
 	}
 }
 
@@ -307,15 +164,11 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT) {
 
 	if freq.Freq != 1 {
 		freq = GetNewFreqNode(1, c.FreqHead, freq)
-		freq.FreqSet = pkg.NewSet[KeyT]()
 	}
 
-	// Добавляем ключ в набор частоты
 	// Создаем новый элемент и вставляем его
 	// в начало двусвязного списка данной частоты,
 	// добавляем в хеш-таблицу
-
-	freq.FreqSet.Add(key)
 	newNode := NewDataNode(value, key, freq)
 	freq.List.PushToFront(newNode)
 	c.Hash[key] = newNode
@@ -334,22 +187,20 @@ func (c *Cache[KeyT, ValueT]) updateLocked(key KeyT, value ValueT) {
 
 	if nextFreq == c.FreqHead || nextFreq.Freq != freqParent.Freq+1 {
 		nextFreq = GetNewFreqNode(freqParent.Freq+1, freqParent, nextFreq)
-		nextFreq.FreqSet = pkg.NewSet[KeyT]()
 	}
 
-	// Добавляем ключ в набор частоты
 	// Обновляем ссылку на родительский узел частоты
-	nextFreq.FreqSet.Add(key)
 	item.Parent = nextFreq
 
+	// Удаляем элемент из двусвязного списка прошлой частоты
 	// Вставляем элемент, полученный по ключю,
 	// в начало двусвязного списка данной частоты
 	freqParent.List.Remove(item)
 	nextFreq.List.PushToFront(item)
 
-	// Удаляем ключ из родительского узла частоты
-	freqParent.FreqSet.Remove(key)
-	if len(freqParent.FreqSet.Items) == 0 {
+	// Удаляем родительский узел частоты
+	// если двусвязного списка частоты пуст
+	if freqParent.List.Head.GetNext() == freqParent.List.Tail {
 		DeleteFreqNode(freqParent)
 	}
 }
@@ -369,9 +220,9 @@ func (c *Cache[KeyT, ValueT]) evictLocked() {
 		key := back.(*DataNode[KeyT, ValueT]).Key
 		delete(c.Hash, key)
 
-		// Удаляем ключ из родительского узла частоты
-		minFreqNode.FreqSet.Remove(key)
-		if len(minFreqNode.FreqSet.Items) == 0 {
+		// Удаляем родительский узел частоты
+		// если двусвязного списка частоты пуст
+		if minFreqNode.List.Head.GetNext() == minFreqNode.List.Tail {
 			DeleteFreqNode(minFreqNode)
 		}
 	}
