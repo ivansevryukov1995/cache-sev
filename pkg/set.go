@@ -22,7 +22,8 @@ func (s *Set[T]) Remove(val T) {
 
 func (s *Set[T]) Pop() T {
 	if len(s.Items) == 0 {
-		panic("Pop() from the empty Set")
+		var ans T
+		return ans
 	}
 	for key := range s.Items {
 		s.Remove(key)

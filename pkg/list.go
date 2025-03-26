@@ -1,62 +1,53 @@
 package pkg
 
-type List[KeyT comparable, ValueT any] struct {
-	Head *Node[KeyT, ValueT]
-	Tail *Node[KeyT, ValueT]
+type DLList[KeyT comparable, ValueT any] struct {
+	Head NodeInterface[KeyT, ValueT]
+	Tail NodeInterface[KeyT, ValueT]
 }
 
-func NewList[KeyT comparable, ValueT any]() *List[KeyT, ValueT] {
-	head := &Node[KeyT, ValueT]{}
-	tail := &Node[KeyT, ValueT]{}
-	head.Next = tail
-	tail.Prev = head
-	return &List[KeyT, ValueT]{Head: head, Tail: tail}
+func (l *DLList[KeyT, ValueT]) PushToFront(node NodeInterface[KeyT, ValueT]) {
+	node.SetPrev(l.Head)
+	node.SetNext(l.Head.GetNext())
+	l.Head.GetNext().SetPrev(node)
+	l.Head.SetNext(node)
 }
 
-func (l *List[KeyT, ValueT]) PushToFront(node *Node[KeyT, ValueT]) {
-	node.Prev = l.Head
-	node.Next = l.Head.Next
-	l.Head.Next.Prev = node
-	l.Head.Next = node
-}
-
-func (l *List[KeyT, ValueT]) Remove(node *Node[KeyT, ValueT]) {
+func (l *DLList[KeyT, ValueT]) Remove(node NodeInterface[KeyT, ValueT]) {
 	if node == nil {
 		return
 	}
 
-	// Если элемент является головой списка
 	if node == l.Head {
-		l.Head = node.Next
-	}
-	// Если элемент является хвостом списка
-	if node == l.Tail {
-		l.Tail = node.Prev
+		l.Head = node.GetNext()
 	}
 
-	if node.Prev != nil {
-		node.Prev.Next = node.Next
+	if node == l.Tail {
+		l.Tail = node.GetPrev()
 	}
-	if node.Next != nil {
-		node.Next.Prev = node.Prev
+
+	if node.GetPrev() != nil {
+		node.GetPrev().SetNext(node.GetNext())
+	}
+	if node.GetNext() != nil {
+		node.GetNext().SetPrev(node.GetPrev())
 	}
 
 	// Обнуляем указатели узла, чтобы избежать утечек памяти
-	node.Prev = nil
-	node.Next = nil
+	// node.SetPrev(nil)
+	// node.SetNext(nil)
 }
 
-func (l *List[KeyT, ValueT]) MoveToFront(node *Node[KeyT, ValueT]) {
-	if node == nil || node.Prev == nil {
+func (l *DLList[KeyT, ValueT]) MoveToFront(node NodeInterface[KeyT, ValueT]) {
+	if node == nil || node.GetPrev() == nil {
 		return
 	}
 	l.Remove(node)
 	l.PushToFront(node)
 }
 
-func (l *List[KeyT, ValueT]) Back() *Node[KeyT, ValueT] {
-	if l.Tail.Prev == l.Head {
+func (l *DLList[KeyT, ValueT]) Back() NodeInterface[KeyT, ValueT] {
+	if l.Tail.GetPrev() == l.Head {
 		return nil
 	}
-	return l.Tail.Prev
+	return l.Tail.GetPrev()
 }
