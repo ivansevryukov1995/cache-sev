@@ -1,6 +1,7 @@
 package lfu
 
 import (
+	"log"
 	"sync"
 	"time"
 
@@ -130,19 +131,18 @@ func (n *FreqNode[KeyT, ValueT]) SetNext(next pkg.NodeInterface[KeyT, ValueT]) {
 // Таким образом, временная сложность доступа к элементу составляет O(1).
 // Get получает элемент из кэша и увеличивает его счетчик использования.
 func (c *Cache[KeyT, ValueT]) Get(key KeyT) (ValueT, bool) {
-	c.Lock.Lock()
-	defer c.Lock.Unlock()
+	c.Lock.RLock()
+	defer c.Lock.RUnlock()
 
 	item, ok := c.Hash[key]
 	if ok {
 		value := item.Value
 		c.updateLocked(key, value)
-
+		log.Printf("Ключ %v получен, частота обращения к элементу увеличена\n", key)
 		return item.Value, true
 	}
-
 	var zeroValue ValueT
-
+	log.Printf("Значение по ключу %v не существует\n", key)
 	return zeroValue, false
 }
 
@@ -152,10 +152,12 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 
 	if _, ok := c.Hash[key]; ok {
 		c.updateLocked(key, value)
+		log.Printf("Элемент по ключю %v перезаписан\n", key)
 		return
 	}
 
 	if len(c.Hash) >= c.Capacity {
+		log.Printf("Объем хранилища кэша переполнен\n")
 		c.evictLocked()
 	}
 
@@ -173,6 +175,7 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 	newNode := NewDataNode(value, key, freq)
 	freq.List.PushToFront(newNode)
 	c.Hash[key] = newNode
+	log.Printf("Ключ %v добавлен в хранилище\n", key)
 
 	if ttl > 0 {
 		go func() {
@@ -188,6 +191,7 @@ func (c *Cache[KeyT, ValueT]) Put(key KeyT, value ValueT, ttl time.Duration) {
 				if parent.List.Head.GetNext() == parent.List.Tail {
 					DeleteFreqNode(parent)
 				}
+				log.Printf("Срок жизни ключа %v истек, он будет удален\n", key)
 			}
 		}()
 	}
@@ -244,5 +248,6 @@ func (c *Cache[KeyT, ValueT]) evictLocked() {
 		if minFreqNode.List.Head.GetNext() == minFreqNode.List.Tail {
 			DeleteFreqNode(minFreqNode)
 		}
+		log.Printf("Элемент по ключу %v вытеснен\n", key)
 	}
 }
